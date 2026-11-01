@@ -57,11 +57,18 @@ def emit(result: dict, as_json: bool) -> None:
         print(json.dumps(result, ensure_ascii=False, allow_nan=False))
     elif "path" in result and not result.get("dry_run"):
         print(f"Saved: {result['path']}")
+        for warning in result.get("warnings", []):
+            print(f"Warning: {warning}", file=sys.stderr)
     else:
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows pipes may otherwise use the legacy system code page, corrupting
+    # JSON paths consumed by an agent. Console output also accepts UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
     secret = os.environ.get("CPA_IMAGEGEN_API_KEY", "")
     try:

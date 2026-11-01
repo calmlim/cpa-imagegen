@@ -121,7 +121,11 @@ python -m build
 
 离线测试使用模拟接口，不需要真实密钥。CI 配置覆盖 Windows / macOS / Linux × Python 3.11 / 3.14，并检查 wheel 安装和内含的 Skill 资源。
 
-本地已在 Windows + Python 3.14 上通过离线测试；当前 CPA 的真实生成与编辑验收结果将在完成后记录。其他平台以 GitHub Actions 实际运行结果为准，尚未推送时不视为已验证。
+2026-11-01 本地验收：Windows + Python 3.14.7、OpenAI SDK 2.54.0、Pillow 13.0.0，通过离线测试、sdist/wheel 构建和 wheel 安装检查。
+
+当前 CPA 已完成一次真实生成和一次真实编辑：请求 `gpt-image-2`、low、1024×1024，先生成蓝色陶瓷杯，再编辑为绿色，保存并目视检查两张 PNG。两次返回均为 1374×1145，与请求尺寸不同；工具保留原图并报告差异。上游未返回实际模型和请求 ID，不能据请求模型证明实际模型路由。测试图片保留在本机忽略目录中，不随源码提交。
+
+其他平台以 GitHub Actions 实际运行结果为准，尚未推送时不视为已验证。
 
 接口依据：[OpenAI Images API](https://developers.openai.com/api/docs/guides/image-generation)。仅实现同步 Images API；异步任务、流式预览、批量并发及各家独立接口不在首版范围内。
 

@@ -198,6 +198,7 @@ class ImageService:
         else:
             raise ImagegenError("response", "API response contains neither image data nor an image URL.")
         width, height = save_png(data, path, overwrite=job.overwrite)
+        matches = None if job.size == "auto" else (width, height) == tuple(map(int, job.size.split("x")))
         actual_model = getattr(response, "model", None)
         usage = getattr(response, "usage", None)
         return {"path": str(path), "requested_model": self.settings.model,
@@ -206,4 +207,8 @@ class ImageService:
                 "request_id": getattr(response, "_request_id", None),
                 "usage": usage.model_dump(mode="json") if hasattr(usage, "model_dump") else usage,
                 "width": width, "height": height, "format": "png",
+                "requested_size": job.size, "size_matches_request": matches,
+                "warnings": [] if matches is not False else [
+                    f"Requested {job.size}, received {width}x{height}. Original dimensions were preserved."
+                ],
                 "image_generation_verified": True}

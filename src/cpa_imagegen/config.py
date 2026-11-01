@@ -91,6 +91,8 @@ def import_codex(source: Path, destination: Path, *, provider: str | None = None
         raise ImagegenError("config", "Provider needs experimental_bearer_token or env_key. OAuth/auth.json credentials are not imported.")
     if destination.resolve() == source.resolve():
         raise ImagegenError("config", "Import destination must differ from the Codex source.")
+    if destination.is_symlink():
+        raise ImagegenError("config", "Private configuration destination must not be a symbolic link.")
     content = "# Private CPA Imagegen configuration. Do not commit.\n"
     content += "".join(f"{k} = {json.dumps(v, ensure_ascii=False)}\n" for k, v in result.items())
     try:

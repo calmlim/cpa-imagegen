@@ -33,6 +33,8 @@ def test_generate_and_metadata(settings, png, tmp_path):
     assert result["model"] == "upstream-model" and result["model_source"] == "upstream"
     assert result["request_id"] == "req-test"
     assert result["usage"]["total_tokens"] == 3
+    assert result["requested_size"] == "1024x1024"
+    assert result["size_matches_request"] is False and result["warnings"]
     assert "b64_json" not in json.dumps(result)
     with Image.open(out) as image:
         assert image.format == "PNG"
@@ -93,7 +95,7 @@ def test_transport_errors_not_retried(settings, tmp_path, kind, category):
     assert error.value.category == category and len(calls) == 1
 
 
-@pytest.mark.parametrize("data", [[], [{}], [{"b64_json": "not-base64"}], [{"b64_json": "bm90IGFuIGltYWdl"}]])
+@pytest.mark.parametrize("data", [[], [None], [{}], [{"b64_json": "not-base64"}], [{"b64_json": "bm90IGFuIGltYWdl"}]])
 def test_empty_or_corrupt_response(settings, tmp_path, data):
     service = ImageService(settings, transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"data": data})))
     with pytest.raises(ImagegenError) as error:
@@ -160,3 +162,10 @@ def test_doctor_does_not_claim_generation(settings, status):
     assert result["gateway_reachable"] and not result["image_generation_verified"]
     assert result["model_listed"] is (True if status == 200 else None)
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("size,expected", [("24x16", True), ("auto", None)])
+def test_dimension_reporting(settings, png, tmp_path, size, expected):
+    service = ImageService(settings, transport=httpx.MockTransport(lambda r: image_response(png)))
+    result = service.run(ImageJob("test", tmp_path / "out.png", size=size))
+    assert result["size_matches_request"] is expected and not result["warnings"]
