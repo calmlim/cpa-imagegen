@@ -38,6 +38,14 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--dry-run", action="store_true")
             if action == "edit":
                 command.add_argument("--image", type=Path, action="append", required=True)
+    resize = commands.add_parser("resize", help="Locally pad or center-crop an existing image; no API call")
+    resize.add_argument("--image", type=Path, required=True)
+    resize.add_argument("--out", type=Path, required=True)
+    resize.add_argument("--size", required=True, help="Exact local output size: WIDTHxHEIGHT")
+    resize.add_argument("--mode", choices=["pad", "crop"], required=True,
+                        help="pad: transparent border; crop: center crop; both preserve aspect ratio")
+    resize.add_argument("--overwrite", action="store_true")
+    resize.add_argument("--json", action="store_true")
     config = commands.add_parser("config")
     config_commands = config.add_subparsers(dest="config_command", required=True)
     importer = config_commands.add_parser("import-codex")
@@ -72,7 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     secret = os.environ.get("CPA_IMAGEGEN_API_KEY", "")
     try:
-        if args.command == "config":
+        if args.command == "resize":
+            from .processing import resize_image
+            result = resize_image(args.image, args.out, size=args.size, mode=args.mode,
+                                  overwrite=args.overwrite)
+        elif args.command == "config":
             codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
             result = import_codex(args.codex_config or codex_home / "config.toml",
                                   args.config or default_config_path(), provider=args.provider,

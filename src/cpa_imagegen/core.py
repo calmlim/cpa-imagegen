@@ -21,6 +21,27 @@ from .errors import ImagegenError, redact
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 
 
+def validate_output_path(path: Path, *, overwrite: bool) -> None:
+    if path.suffix.lower() != ".png":
+        raise ImagegenError("input", "This release writes PNG files; --out must end in .png.")
+    if path.exists() and (not overwrite or not path.is_file()):
+        raise ImagegenError("save", "Output already exists; choose another path or use --overwrite for a file.")
+    if path.is_symlink():
+        raise ImagegenError("save", "Output must not be a symbolic link.")
+
+
+def validate_input_image(path: Path) -> None:
+    try:
+        if path.stat().st_size > MAX_IMAGE_BYTES:
+            raise ImagegenError("input", "Input image exceeds 50 MiB.")
+        with Image.open(path) as image:
+            if image.format not in {"PNG", "JPEG", "WEBP"}:
+                raise ImagegenError("input", "Input images must be PNG, JPEG or WebP.")
+            image.verify()
+    except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError):
+        raise ImagegenError("input", f"Cannot read a valid input image: {path}") from None
+
+
 @dataclass
 class ImageJob:
     prompt: str
@@ -37,24 +58,11 @@ class ImageJob:
             raise ImagegenError("input", "size must be auto or WIDTHxHEIGHT.")
         if not self.quality.strip():
             raise ImagegenError("input", "quality must not be empty.")
-        if self.out.suffix.lower() != ".png":
-            raise ImagegenError("input", "This release writes PNG files; --out must end in .png.")
-        if self.out.exists() and (not self.overwrite or not self.out.is_file()):
-            raise ImagegenError("save", "Output already exists; choose another path or use --overwrite for a file.")
-        if self.out.is_symlink():
-            raise ImagegenError("save", "Output must not be a symbolic link.")
+        validate_output_path(self.out, overwrite=self.overwrite)
         for path in self.images:
             if path.resolve() == self.out.resolve():
                 raise ImagegenError("input", "Input and output images must have different paths.")
-            try:
-                if path.stat().st_size > MAX_IMAGE_BYTES:
-                    raise ImagegenError("input", "Input image exceeds 50 MiB.")
-                with Image.open(path) as image:
-                    if image.format not in {"PNG", "JPEG", "WEBP"}:
-                        raise ImagegenError("input", "Input images must be PNG, JPEG or WebP.")
-                    image.verify()
-            except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError):
-                raise ImagegenError("input", f"Cannot read a valid input image: {path}") from None
+            validate_input_image(path)
 
 
 def validate_image(data: bytes) -> tuple[int, int]:

@@ -80,6 +80,24 @@ cpa-imagegen edit --image output/imagegen/mug.png --prompt "Change only the mug 
 
 若上游未返回实际模型，结果的 `model` 使用请求模型，并用 `model_source: "requested"` 标记，不能据此证明上游实际路由。网关也可能忽略尺寸请求；工具保留原始尺寸，不静默缩放，并报告请求与实际尺寸是否一致。
 
+### 精确输出尺寸：本地补边或裁剪
+
+继续使用 CPA 中登录的订阅账号即可。需要精确尺寸时，先保存原图，再运行独立的本地命令，不需要密钥、不联网、不消耗生图额度：
+
+```sh
+# 等比缩放，居中放入透明画布，保留完整画面
+cpa-imagegen resize --image output/imagegen/mug.png --size 1024x1024 --mode pad --out output/imagegen/mug-padded.png --json
+
+# 等比缩放并居中裁剪，填满画布，会丢失部分边缘
+cpa-imagegen resize --image output/imagegen/mug.png --size 1024x1024 --mode crop --out output/imagegen/mug-cropped.png --json
+```
+
+`resize` 要求明确选择 `pad` 或 `crop`，不提供拉伸模式。`--size` 必须是具体的 `WIDTHxHEIGHT`，不能为 `auto`；输出像素数不能超过 Pillow 的图片像素安全阈值。输入支持 PNG、JPEG、WebP，并按 EXIF 方向处理。输出为 PNG，必须与输入路径不同；已有输出需显式添加 `--overwrite`。
+
+JSON 用 `local_processing: true`、`source_width` / `source_height` 和 `width` / `height` 区分原图与处理结果。本地处理保证最终文件尺寸，不能证明上游原生按该尺寸生成，也不能补回原图没有的细节。默认生成、编辑流程仍保留上游尺寸。
+
+CPA 同类尺寸问题见 [#4114](https://github.com/router-for-me/CLIProxyAPI/issues/4114#issuecomment-4901391886) 和 [#5860](https://github.com/router-for-me/CLIProxyAPI/issues/5860#issuecomment-5696646250)：仓库协作者将其归因于上游忽略参数。目前没有据此确认有效的 CPA 尺寸开关或升级修复。
+
 ## 安装 Codex Skill
 
 在安装工具的同一 Python 环境中执行：
@@ -124,6 +142,8 @@ python -m build
 2026-11-01 本地验收：Windows + Python 3.14.7、OpenAI SDK 2.54.0、Pillow 13.0.0，通过离线测试、sdist/wheel 构建和 wheel 安装检查。
 
 当前 CPA 已完成一次真实生成和一次真实编辑：请求 `gpt-image-2`、low、1024×1024，先生成蓝色陶瓷杯，再编辑为绿色，保存并目视检查两张 PNG。两次返回均为 1374×1145，与请求尺寸不同；工具保留原图并报告差异。上游未返回实际模型和请求 ID，不能据请求模型证明实际模型路由。测试图片保留在本机忽略目录中，不随源码提交。
+
+本地尺寸处理已使用上述编辑结果分别验收 `pad` 和 `crop`，两者均输出 1024×1024 并目视检查；原图保留，没有新增生图请求。相关离线测试覆盖内容保留、透明度、居中裁剪、EXIF 方向、文件冲突和不联网运行。
 
 其他平台以 GitHub Actions 实际运行结果为准，尚未推送时不视为已验证。
 

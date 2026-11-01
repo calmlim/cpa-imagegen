@@ -35,6 +35,18 @@ edit --image "output/imagegen/mug.png" --prompt "Change only the mug to green; p
 
 Defaults: `gpt-image-2`, 1024x1024, medium quality, one PNG. Honor user-specified model, size and quality; other compatible models are not guaranteed to work. Do not infer supported image parameters from the text model used by the agent.
 
+## Exact output dimensions
+
+The gateway can return different dimensions despite `--size`. Check `size_matches_request` and report any mismatch. Preserve the upstream original; do not repeat generation to chase dimensions.
+
+For exact delivery dimensions, use the independent local `resize` command after generation or on an existing image. It needs no gateway configuration and makes no API call:
+
+```text
+resize --image "output/imagegen/mug.png" --size 1024x1024 --mode pad --out "output/imagegen/mug-padded.png" --json
+```
+
+Use `pad` to preserve the full composition with transparent borders. Use `crop` when the user requests a filled canvas and permits loss of edges; it crops from the center. Both scale proportionally. Choose a separate output path, inspect the adjusted image, and identify it as locally processed. A requested generation size alone does not authorize cropping. If exact file dimensions are required without an explicit crop preference, use padding and disclose the transparent border. Do not describe a processed image as natively generated at that size.
+
 ## Configuration and diagnostics
 
 Use `doctor --json` for a connection/model-list check; it does not verify image generation. `--dry-run` on generate/edit validates local inputs and reports a request without contacting the gateway. Dry-run output includes the prompt, so treat it as potentially private.
