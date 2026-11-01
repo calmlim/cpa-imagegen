@@ -1,30 +1,75 @@
 # cpa-imagegen
 
+[![Offline tests and package](https://github.com/calmlim/cpa-imagegen/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/calmlim/cpa-imagegen/actions/workflows/test.yml)
+
 面向 AI Agent 的 CPA 生图工具：独立 Python CLI + Codex Skill，通过兼容 OpenAI Images API 的网关生成和编辑图片。
 
-核心不依赖 Codex 安装目录、内置脚本或登录状态。其他能执行命令的 Agent 可以使用同一 CLI；首版实际 Agent 集成以 Codex 为范围，暂不提供 MCP。
+适合已经通过 [CLIProxyAPI（CPA）](https://github.com/router-for-me/CLIProxyAPI) 使用模型，希望在 Codex 或其他能运行命令的 Agent 中完成生图、参考图编辑及本地尺寸处理的用户。
+
+## 工作方式与范围
+
+```text
+自然语言需求 → Codex Skill → 独立 Python CLI → CPA → CPA 配置的图片上游
+                                  ↓
+                            保存本地 PNG → 可选补边／裁剪
+```
+
+核心不依赖 Codex 安装目录、内置生图脚本或 Codex 登录状态。Skill 负责引导 Agent 调用 CLI 并展示结果；它不会为 Codex 的模型连接注入原生生图工具。
+
+- **当前已验收的方式**：CPA 中登录了订阅 ChatGPT Pro 的 OpenAI 账号，客户端使用 CPA 地址和网关密钥。此处 Pro 指账号订阅，不是 CPA 的版本；本工具不读取该账号的登录凭据，也不要求所有用户必须订阅 Pro。
+- **接口范围**：生成调用 `/images/generations`，编辑调用 `/images/edits`；通常配置以 `/v1` 结尾的 CPA Base URL。能否生图、使用什么上游及如何计费，由 CPA 的路由和上游决定。网关密钥与独立 OpenAI API Key 是不同的凭据。
+- **模型范围**：首版真实请求指定 `gpt-image-2`。允许用 `--model` 指定其他模型，但只有兼容上述 Images 接口的上游才有可能直接使用，不承诺支持所有生图模型。上游未返回实际模型时，也不能仅凭请求名证明实际模型路由。
+- **Agent 范围**：实际集成验收为 Codex。其他能执行命令的 Agent 可调用同一 CLI；不宣称已验证其他 Agent 的 Skill 安装方式。
+- **当前不提供**：MCP 服务、异步任务、流式预览、批量并发及各家专有生图接口。
 
 ## 安装
 
-需要 Python 3.11+。下载或克隆仓库后进入项目目录。当前从源码安装，尚未发布到 PyPI。
+需要 Python 3.11+、Git，以及已部署且配置了图片上游的 CPA。`resize` 仅处理本地文件，不需要 CPA。当前从源码安装，尚未发布到 PyPI。
 
 Windows PowerShell：
 
 ```powershell
+git clone https://github.com/calmlim/cpa-imagegen.git
+cd cpa-imagegen
 python -m venv .venv
 & .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install .
 ```
 
 macOS / Linux：
 
 ```sh
+git clone https://github.com/calmlim/cpa-imagegen.git
+cd cpa-imagegen
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install .
 ```
 
-安装后运行 `cpa-imagegen --help`，也可使用 `python -m cpa_imagegen`。非开发安装可使用 `python -m pip install .`。Skill 绑定的 Python 环境应保持可用。
+安装后运行 `cpa-imagegen --help`，也可使用 `python -m cpa_imagegen`。如果 PowerShell 阻止激活脚本，可直接使用 `.\.venv\Scripts\python.exe -m pip install .`，后续将命令前缀替换为 `.\.venv\Scripts\python.exe -m cpa_imagegen`。Skill 绑定的 Python 环境应保持可用；移动或删除虚拟环境后需要重新安装或绑定 Skill。
+
+## 快速开始：已有 Codex CPA 配置
+
+在安装工具并激活虚拟环境后执行：
+
+```sh
+# 显式导入当前自定义 provider 的网关连接配置
+cpa-imagegen config import-codex --json
+
+# 检查连接和模型列表；这一步不发起生图
+cpa-imagegen doctor --json
+
+# 将 Skill 安装到当前用户的 Codex
+cpa-imagegen install-skill --agent codex --json
+```
+
+随后新建一个 Codex 聊天，输入：
+
+> 使用 $cpa-imagegen 画一张绿色陶瓷杯产品图，保存并展示。
+
+`config import-codex` 只适用于包含网关地址及受支持凭据字段的自定义 provider。若当前 Codex 只是直接登录 ChatGPT 账号，或未配置可导入的网关密钥，请使用下面的独立配置；本工具不会自动提取 OAuth 令牌。已有私人配置或 Skill 时默认拒绝覆盖。
+
+不使用 Codex 时，可以跳过 Skill 安装，直接使用下文的 CLI。
 
 ## 配置 CPA
 
@@ -52,11 +97,22 @@ $env:CPA_IMAGEGEN_MODEL = "gpt-image-2"
 
 macOS / Linux 用 `export CPA_IMAGEGEN_BASE_URL=...` 等方式设置。也可参考 [config.example.toml](config.example.toml)，用 `--config` 指定自己的 TOML 文件。配置支持 `api_key` 或 `api_key_env`，后者引用本机环境变量。
 
+这里填写 **CPA 提供给客户端的网关密钥**。配置文件使用 `api_key_env` 时，只保存环境变量名，每次启动工具时仍需确保相应环境变量存在。
+
 优先级：命令参数 > `CPA_IMAGEGEN_*` 环境变量 > TOML 配置 > 非敏感默认值。密钥不接受命令行参数。地址和密钥缺失时停止，不默认切到官方服务，也不使用 `OPENAI_API_KEY` / `OPENAI_BASE_URL`。
 
 导入的字面密钥保存在用户私人配置中；Unix 新建文件权限为 0600，Windows 继承用户目录权限。真实配置、日志和生成图片不纳入版本控制。
 
 ## 使用
+
+| 命令 | 用途 | 是否发起网络请求 |
+|---|---|---|
+| `generate` | 生成单张图片 | 是；`--dry-run` 时否 |
+| `edit` | 使用一张或多张参考图片编辑 | 是；`--dry-run` 时否 |
+| `resize` | 本地等比补边或居中裁剪 | 否 |
+| `doctor` | 检查配置、网关和模型列表 | 是，但不生图 |
+| `config import-codex` | 显式导入自定义 provider 的连接配置 | 否 |
+| `install-skill --agent codex` | 安装绑定当前 Python 环境的 Skill | 否 |
 
 ```sh
 # 检查配置、连接和模型列表，不调用生图
@@ -108,6 +164,8 @@ cpa-imagegen install-skill --agent codex --json
 
 默认安装到 `$CODEX_HOME/skills/cpa-imagegen`，未设置 `CODEX_HOME` 时为 `~/.codex/skills/cpa-imagegen`。用 `--dest PATH` 指定其他技能目录。已有目录不会覆盖。安装内容绑定实际 Python 环境，不包含密钥或开发机的固定路径。
 
+仓库中的 `src/cpa_imagegen/data/skill/` 是待安装的模板，不能直接复制后运行：`install-skill` 会将命令占位符替换为当前解释器的实际位置。升级 CLI 时，在原虚拟环境内更新源码并重新执行 `python -m pip install .`；如果需要更新 Skill 说明，先将原 Skill 目录移到备份位置，再执行安装命令。安装器不自动覆盖或删除已有 Skill。
+
 新建聊天；如果未发现 Skill，重启 Codex。示例：
 
 > 使用 $cpa-imagegen 生成一张 1024×1024 的咖啡杯产品图，保存到项目并展示。
@@ -133,19 +191,20 @@ SDK 自动重试为零，不自动换模型、换服务或重复生成。`doctor
 ## 验证与开发
 
 ```sh
+python -m pip install -e '.[dev]'
 python -m pytest -q
 python -m build
 ```
 
 离线测试使用模拟接口，不需要真实密钥。CI 配置覆盖 Windows / macOS / Linux × Python 3.11 / 3.14，并检查 wheel 安装和内含的 Skill 资源。
 
-2026-11-01 本地验收：Windows + Python 3.14.7、OpenAI SDK 2.54.0、Pillow 13.0.0，通过离线测试、sdist/wheel 构建和 wheel 安装检查。
+2026-11-01 本地验收：Windows + Python 3.14.7、OpenAI SDK 2.54.0、Pillow 13.0.0，65 项离线测试通过，并完成 sdist/wheel 构建、wheel 安装及 Codex Skill 安装检查。
 
 当前 CPA 已完成一次真实生成和一次真实编辑：请求 `gpt-image-2`、low、1024×1024，先生成蓝色陶瓷杯，再编辑为绿色，保存并目视检查两张 PNG。两次返回均为 1374×1145，与请求尺寸不同；工具保留原图并报告差异。上游未返回实际模型和请求 ID，不能据请求模型证明实际模型路由。测试图片保留在本机忽略目录中，不随源码提交。
 
 本地尺寸处理已使用上述编辑结果分别验收 `pad` 和 `crop`，两者均输出 1024×1024 并目视检查；原图保留，没有新增生图请求。相关离线测试覆盖内容保留、透明度、居中裁剪、EXIF 方向、文件冲突和不联网运行。
 
-其他平台以 GitHub Actions 实际运行结果为准，尚未推送时不视为已验证。
+跨平台离线测试和构建结果请查看 [GitHub Actions](https://github.com/calmlim/cpa-imagegen/actions/workflows/test.yml) 的实际运行记录。CI 不包含真实生图请求；通过 CI 不代表验证了各平台的 Codex 集成或所有 CPA 部署。
 
 接口依据：[OpenAI Images API](https://developers.openai.com/api/docs/guides/image-generation)。仅实现同步 Images API；异步任务、流式预览、批量并发及各家独立接口不在首版范围内。
 
