@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import sysconfig
 
 from cpa_imagegen.cli import main
 
@@ -29,7 +30,7 @@ def test_cli_missing_configuration_json(capsys):
 def test_entrypoints_installed():
     python = subprocess.run([sys.executable, "-m", "cpa_imagegen", "--version"], capture_output=True, text=True)
     assert python.returncode == 0 and python.stdout.strip() == "0.1.0"
-    script = Path(sys.executable).parent / ("cpa-imagegen.exe" if os.name == "nt" else "cpa-imagegen")
+    script = Path(sysconfig.get_path("scripts")) / ("cpa-imagegen.exe" if os.name == "nt" else "cpa-imagegen")
     result = subprocess.run([str(script), "--help"], capture_output=True, text=True)
     assert result.returncode == 0 and "import" not in result.stderr
     assert "generate" in result.stdout and "doctor" in result.stdout

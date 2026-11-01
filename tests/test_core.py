@@ -57,17 +57,18 @@ def test_edit_multipart_multiple_files(settings, png, tmp_path):
 
 def test_url_download_and_redirect_never_forward_gateway_auth(settings, png, tmp_path):
     calls = []
+    download_token = "signed-download-secret-7a3e"
     def handler(request):
         calls.append(request)
         if request.method == "POST":
-            return httpx.Response(200, json={"data": [{"url": "https://images.invalid/signed?token=private"}]})
+            return httpx.Response(200, json={"data": [{"url": f"https://images.invalid/signed?token={download_token}"}]})
         assert "authorization" not in request.headers
         if request.url.host == "images.invalid":
             return httpx.Response(302, headers={"location": "https://cdn.invalid/result.png"})
         return httpx.Response(200, content=png)
     result = ImageService(settings, transport=httpx.MockTransport(handler)).run(ImageJob("test", tmp_path / "out.png"))
     assert len(calls) == 3 and Path(result["path"]).is_file()
-    assert "private" not in json.dumps(result)
+    assert download_token not in json.dumps(result)
 
 
 @pytest.mark.parametrize("status,category", [(401, "authentication"), (403, "authentication"), (429, "rate_limit"), (500, "upstream"), (503, "upstream")])
