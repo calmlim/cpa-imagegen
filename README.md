@@ -1,26 +1,130 @@
 # cpa-imagegen
 
-面向 AI Agent 的 CPA 生图工具，计划通过兼容 OpenAI Images API 的网关完成图片生成和编辑。
+面向 AI Agent 的 CPA 生图工具：独立 Python CLI + Codex Skill，通过兼容 OpenAI Images API 的网关生成和编辑图片。
 
-项目目前处于设计阶段，尚未实现生图核心、CLI 或 Agent 接入。
+核心不依赖 Codex 安装目录、内置脚本或登录状态。其他能执行命令的 Agent 可以使用同一 CLI；首版实际 Agent 集成以 Codex 为范围，暂不提供 MCP。
 
-## 设计方向
+## 安装
 
-- **生图核心**：处理接口请求、图片结果、文件保存及错误。
-- **CLI**：提供图片生成、图片编辑及连接检查入口。
-- **Agent 接入**：首版提供 Codex Skill；后续可在同一核心上增加其他 Agent 的 Skill 或 MCP 入口。
+需要 Python 3.11+。下载或克隆仓库后进入项目目录。当前从源码安装，尚未发布到 PyPI。
 
-地址、密钥和模型通过独立配置或环境变量传入。核心逻辑不依赖 Codex 安装目录或其内置脚本。
+Windows PowerShell：
 
-## 首版目标
+```powershell
+python -m venv .venv
+& .\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+```
 
-1. 使用当前 CPA 环境验证 `gpt-image-2` 的实际出图能力。
-2. 完成生成、保存、展示和编辑的完整流程。
-3. 区分接口可访问、模型已列出和实际出图成功，提供明确的诊断结果。
-4. 明确报告请求失败，不自动更换模型、服务或重复生成。
+macOS / Linux：
 
-首版以 OpenAI Images 兼容接口为范围。其他模型是否兼容，需要验证请求参数、返回格式及任务执行方式，不以模型列表作为支持依据。
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
+```
 
-## 本地配置与生成文件
+安装后运行 `cpa-imagegen --help`，也可使用 `python -m cpa_imagegen`。非开发安装可使用 `python -m pip install .`。Skill 绑定的 Python 环境应保持可用。
 
-真实密钥、私人配置、运行日志、生成图片和本地环境不纳入版本控制。后续如提供配置示例，仅包含占位值。
+## 配置 CPA
+
+### 显式导入当前 Codex provider
+
+```sh
+cpa-imagegen config import-codex --json
+```
+
+命令输出实际的用户级私人配置位置。只导入所选 provider 的 `base_url` 和 `experimental_bearer_token`，或保存 `env_key` 对应的环境变量名；不导入文本模型、项目设置、OAuth 或 `auth.json`。图像模型默认是 `gpt-image-2`。
+
+可用 `--codex-config PATH` 指定源文件，`--provider NAME` 指定 provider，`--config PATH` 指定私人配置目标。已有目标不会覆盖，除非添加 `--overwrite`。普通运行不会再读取 Codex。
+
+私人配置路径由 platformdirs 根据操作系统和进程环境确定；桌面应用与独立终端的环境可能不同，必要时在后续命令添加 `--config` 指向导入时输出的路径。
+
+### 独立配置
+
+在本机设置环境变量，不要把真实密钥粘贴到聊天或提交到仓库：
+
+```powershell
+$env:CPA_IMAGEGEN_BASE_URL = "https://gateway.example.invalid/v1"
+$env:CPA_IMAGEGEN_API_KEY = "YOUR_GATEWAY_KEY"
+$env:CPA_IMAGEGEN_MODEL = "gpt-image-2"
+```
+
+macOS / Linux 用 `export CPA_IMAGEGEN_BASE_URL=...` 等方式设置。也可参考 [config.example.toml](config.example.toml)，用 `--config` 指定自己的 TOML 文件。配置支持 `api_key` 或 `api_key_env`，后者引用本机环境变量。
+
+优先级：命令参数 > `CPA_IMAGEGEN_*` 环境变量 > TOML 配置 > 非敏感默认值。密钥不接受命令行参数。地址和密钥缺失时停止，不默认切到官方服务，也不使用 `OPENAI_API_KEY` / `OPENAI_BASE_URL`。
+
+导入的字面密钥保存在用户私人配置中；Unix 新建文件权限为 0600，Windows 继承用户目录权限。真实配置、日志和生成图片不纳入版本控制。
+
+## 使用
+
+```sh
+# 检查配置、连接和模型列表，不调用生图
+cpa-imagegen doctor --json
+
+# 不联网，只检查本地输入并展示即将发送的参数
+cpa-imagegen generate --prompt "A ceramic mug in soft daylight" --out output/imagegen/mug.png --dry-run --json
+
+# 生成一张图片
+cpa-imagegen generate --prompt "A ceramic mug in soft daylight" --out output/imagegen/mug.png --json
+
+# 编辑图片，可重复添加 --image 作为参考
+cpa-imagegen edit --image output/imagegen/mug.png --prompt "Change only the mug to green" --out output/imagegen/mug-green.png --json
+```
+
+默认：`gpt-image-2`、1024×1024、medium、单张 PNG。可用 `--model`、`--size`、`--quality`、`--timeout` 调整。尺寸接受 `auto` 或 `WIDTHxHEIGHT`，具体模型支持由上游验证，不按模型名称前缀限制兼容模型。此版本输出路径必须以 `.png` 结尾；输入支持 PNG、JPEG、WebP，每个文件不超过 50 MiB。
+
+复杂提示词建议保存为 UTF-8 文件，通过 `--prompt-file PATH` 传入。已有图片不会覆盖，明确替换时添加 `--overwrite`；输入和输出必须是不同文件。`--dry-run` 输出包含提示词，不应作为公开日志。
+
+普通输出显示保存路径。`--json` 返回绝对路径、实际尺寸、模型、请求 ID 和上游提供的用量，不包含图片 Base64；运行错误返回 `error.category`、脱敏消息和可用的请求 ID，退出码为 1；命令语法错误遵循 argparse 的退出码 2。
+
+若上游未返回实际模型，结果的 `model` 使用请求模型，并用 `model_source: "requested"` 标记，不能据此证明上游实际路由。网关也可能忽略尺寸请求；工具保留原始尺寸，不静默缩放，并报告请求与实际尺寸是否一致。
+
+## 安装 Codex Skill
+
+在安装工具的同一 Python 环境中执行：
+
+```sh
+cpa-imagegen install-skill --agent codex --json
+```
+
+默认安装到 `$CODEX_HOME/skills/cpa-imagegen`，未设置 `CODEX_HOME` 时为 `~/.codex/skills/cpa-imagegen`。用 `--dest PATH` 指定其他技能目录。已有目录不会覆盖。安装内容绑定实际 Python 环境，不包含密钥或开发机的固定路径。
+
+新建聊天；如果未发现 Skill，重启 Codex。示例：
+
+> 使用 $cpa-imagegen 生成一张 1024×1024 的咖啡杯产品图，保存到项目并展示。
+
+也可直接提出通过 CPA 生图或改图的需求，由 Agent 根据 Skill 描述选择。其他 Agent 可调用 CLI，或自行安装兼容的 Skill 目录；当前不宣称已完成其他 Agent 的安装验收。
+
+## 故障排查
+
+| 类别 | 含义与处理 |
+|---|---|
+| `config` | 检查地址、密钥来源、配置路径和 timeout |
+| `authentication` | 网关返回 401/403，检查 CPA 凭据或上游权限 |
+| `rate_limit` | 网关返回 429，检查额度或频率限制 |
+| `connection` / `timeout` | 连接失败或超时；超时后上游是否完成未知 |
+| `upstream` | 根据 HTTP 状态、脱敏错误和请求 ID 检查 CPA 路由 |
+| `response` / `download` | 返回为空、图片损坏或下载失败，不重复生成 |
+| `input` / `save` / `install` | 检查输入、输出权限、文件冲突或安装路径 |
+
+SDK 自动重试为零，不自动换模型、换服务或重复生成。`doctor` 成功只说明配置和模型列表检查通过，始终返回 `image_generation_verified: false`。模型被列出不保证可以生图，也不能说明使用了哪个订阅的额度。
+
+图片返回支持 Base64 或 HTTP(S) URL。URL 下载使用独立客户端，不携带 CPA bearer token；保存前验证图片，再以 PNG 输出。
+
+## 验证与开发
+
+```sh
+python -m pytest -q
+python -m build
+```
+
+离线测试使用模拟接口，不需要真实密钥。CI 配置覆盖 Windows / macOS / Linux × Python 3.11 / 3.14，并检查 wheel 安装和内含的 Skill 资源。
+
+本地已在 Windows + Python 3.14 上通过离线测试；当前 CPA 的真实生成与编辑验收结果将在完成后记录。其他平台以 GitHub Actions 实际运行结果为准，尚未推送时不视为已验证。
+
+接口依据：[OpenAI Images API](https://developers.openai.com/api/docs/guides/image-generation)。仅实现同步 Images API；异步任务、流式预览、批量并发及各家独立接口不在首版范围内。
+
+## 许可证
+
+[MIT](LICENSE)，Copyright © 2026 calmlim。

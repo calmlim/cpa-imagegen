@@ -1,0 +1,6 @@
+# Use --config /path/to/your/private.toml to select your own configuration.
+# The import command reports the default user configuration path.
+base_url = "https://gateway.example.invalid/v1"
+api_key_env = "CPA_IMAGEGEN_API_KEY"
+model = "gpt-image-2"
+timeout = 300

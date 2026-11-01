@@ -45,6 +45,10 @@ def parser() -> argparse.ArgumentParser:
     importer.add_argument("--codex-config", type=Path)
     importer.add_argument("--provider")
     importer.add_argument("--overwrite", action="store_true")
+    installer = commands.add_parser("install-skill")
+    common(installer)
+    installer.add_argument("--agent", choices=["codex"], required=True)
+    installer.add_argument("--dest", type=Path, help="Skill folder; must not already exist")
     return root
 
 
@@ -66,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
             result = import_codex(args.codex_config or codex_home / "config.toml",
                                   args.config or default_config_path(), provider=args.provider,
                                   overwrite=args.overwrite)
+        elif args.command == "install-skill":
+            from .skill import install_skill
+            result = install_skill(args.dest)
         else:
             settings = load_settings(path=args.config, base_url=args.base_url,
                                      model=args.model, timeout=args.timeout)
